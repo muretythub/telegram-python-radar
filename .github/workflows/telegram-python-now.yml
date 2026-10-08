@@ -1,1 +1,49 @@
+name: telegram-python-now
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: auto, daily, or digest
+        required: false
+        default: auto
+        type: choice
+        options:
+          - auto
+          - daily
+          - digest
+permissions:
+  contents: write
+concurrency:
+  group: telegram-python-now
+  cancel-in-progress: false
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Diff official Telegram sources
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RADAR_LLM_API_BASE: ${{ secrets.RADAR_LLM_API_BASE }}
+          RADAR_LLM_API_KEY: ${{ secrets.RADAR_LLM_API_KEY }}
+          RADAR_LLM_MODEL: ${{ secrets.RADAR_LLM_MODEL }}
+          MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'auto' }}
+        run: sh tools/telegram-python-now/run_radar.sh "$MODE"
+      - name: Remember only what was already handled
+        run: |
+          # git diff молчит про новый (неотслеживаемый) файл, поэтому смотрим status
+          if [ -z "$(git status --porcelain -- state/telegram-radar.json)" ]; then
+            exit 0
+          fi
+          git config user.name "telegram-radar"
+          git config user.email "telegram-radar@users.noreply.github.com"
+          git add state/telegram-radar.json
+          git commit -m "radar: remember findings already delivered"
+          git push
 
